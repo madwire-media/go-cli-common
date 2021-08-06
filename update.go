@@ -75,7 +75,7 @@ func NewAutoUpdater(
 			otherState = "enable"
 		}
 
-		fmt.Println("You can " + otherState + " this later by running 'secrets config autoupdate'")
+		fmt.Println("You can " + otherState + " this later by running '" + os.Args[0] + " config autoupdate'")
 
 		shouldSave = true
 	}
