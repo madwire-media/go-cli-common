@@ -32,13 +32,17 @@ const (
 )
 
 type AutoUpdater struct {
-	config       autoUpdaterConfig
+	config      autoUpdaterConfig
+	githubToken string
+
 	configDir    *UserConfigDir
 	buildVersion string
 	githubRepo   string
+	isPrivate    bool
 }
 
 type autoUpdaterConfig struct {
+	GithubToken    string `json:"githubToken"`
 	AutoUpdate     *bool  `json:"autoUpdate"`
 	LastUpdateTime *int64 `json:"lastUpdateTime"`
 }
@@ -46,11 +50,13 @@ type autoUpdaterConfig struct {
 type updatedRelease struct {
 	version     string
 	downloadURL string
+	githubToken string
 }
 
 func NewAutoUpdater(
 	configDir *UserConfigDir,
 	buildVersion, githubRepo string,
+	isPrivate bool,
 ) (error, *AutoUpdater) {
 	shouldSave := false
 
@@ -80,11 +86,28 @@ func NewAutoUpdater(
 		shouldSave = true
 	}
 
+	var githubToken string
+
+	if isPrivate {
+		githubToken = config.GithubToken
+
+		if githubToken == "" {
+			netrcToken := tryFindGithubToken()
+
+			if netrcToken != "" {
+				githubToken = netrcToken
+			}
+		}
+	}
+
 	updater := &AutoUpdater{
-		config:       config,
+		config:      config,
+		githubToken: githubToken,
+
 		configDir:    configDir,
 		buildVersion: buildVersion,
 		githubRepo:   githubRepo,
+		isPrivate:    isPrivate,
 	}
 
 	if shouldSave {
@@ -195,6 +218,28 @@ func (updater *AutoUpdater) save() error {
 	return updater.configDir.SaveConfig(updateConfigName, &updater.config)
 }
 
+func (updater *AutoUpdater) getOrAskForToken(forceNew bool) (string, error) {
+	if !forceNew {
+		if updater.githubToken != "" {
+			return updater.githubToken, nil
+		}
+
+		fmt.Println("No GitHub personal access token configured, please enter a token to enable automatic updates")
+	}
+
+	newToken := CliQuestion("GitHub access token (for updates)")
+
+	updater.config.GithubToken = newToken
+	updater.githubToken = newToken
+
+	err := updater.save()
+	if err != nil {
+		return "", err
+	}
+
+	return newToken, nil
+}
+
 func (updater *AutoUpdater) checkForUpdate(force bool) (*updatedRelease, error) {
 	type releaseAsset struct {
 		Name string `json:"name"`
@@ -222,10 +267,29 @@ func (updater *AutoUpdater) checkForUpdate(force bool) (*updatedRelease, error) 
 		return nil, err
 	}
 
+	var token string
+
+	if updater.isPrivate {
+		token, err = updater.getOrAskForToken(false)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	var releaseData releaseResponse
 
 	for {
 		req, err := http.NewRequest("GET", fmt.Sprintf(githubLatestReleaseTemplate, updater.githubRepo), nil)
+
+		if updater.isPrivate {
+			if token == "" {
+				fmt.Println("Skipping update check since GitHub personal access token is not configured")
+				return nil, nil
+			}
+
+			req.Header.Add("Authorization", "Bearer "+token)
+		}
+
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			return nil, err
@@ -235,6 +299,21 @@ func (updater *AutoUpdater) checkForUpdate(force bool) (*updatedRelease, error) 
 		resp.Body.Close()
 		if err != nil {
 			return nil, err
+		}
+
+		if resp.StatusCode == 404 {
+			if updater.isPrivate {
+				fmt.Println("Got 404 when trying to list updates, assuming GitHub token is invalid")
+
+				token, err = updater.getOrAskForToken(true)
+				if err != nil {
+					return nil, err
+				}
+
+				continue
+			} else {
+				return nil, errors.New("got 404 when trying to list updates")
+			}
 		}
 
 		err = json.Unmarshal(body, &releaseData)
@@ -253,7 +332,8 @@ func (updater *AutoUpdater) checkForUpdate(force bool) (*updatedRelease, error) 
 	}
 
 	update := updatedRelease{
-		version: releaseData.TagName,
+		version:     releaseData.TagName,
+		githubToken: token,
 	}
 
 	expectedSuffix := runtime.GOOS + "_" + runtime.GOARCH + ".tar.gz"
@@ -277,6 +357,11 @@ func (update *updatedRelease) apply(restart bool) error {
 	}
 
 	req, err := http.NewRequest("GET", update.downloadURL, nil)
+
+	if update.githubToken != "" {
+		req.Header.Set("Authorization", "Bearer "+update.githubToken)
+	}
+
 	req.Header.Set("Accept", "application/octet-stream")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -360,6 +445,84 @@ func (update *updatedRelease) apply(restart bool) error {
 	}
 
 	return nil
+}
+
+func tryFindGithubToken() string {
+	// TODO: are there any other easy ways to get preexisting GitHub tokens?
+
+	return tryFindGithubTokenFromNetrc()
+}
+
+func tryFindGithubTokenFromNetrc() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+
+	netrcFilename := ".netrc"
+
+	if runtime.GOOS == "windows" {
+		netrcFilename = "_netrc"
+	}
+
+	netrcBytes, err := os.ReadFile(filepath.Join(home, netrcFilename))
+	if err != nil {
+		return ""
+	}
+
+	wordBuilder := strings.Builder{}
+	isGithub := false
+	lastKeyword := ""
+
+	for _, b := range netrcBytes {
+		switch b {
+		case '\r':
+			// ignore
+
+		case ' ', '\n', '\t':
+			// separator
+			word := wordBuilder.String()
+			wordBuilder.Reset()
+
+			switch lastKeyword {
+			case "machine":
+				isGithub = word == "github.com"
+				lastKeyword = ""
+
+			case "password":
+				if isGithub {
+					// Personal access tokens are exactly 40 characters
+					match, err := regexp.Match(`^[a-fA-F0-9]{40}$`, []byte(word))
+					if err == nil && match {
+						return word
+					}
+
+					return ""
+				}
+
+			case "":
+				switch word {
+				case "default":
+					isGithub = false
+
+				case "machine", "login", "password", "account", "macdef":
+					lastKeyword = word
+
+				default:
+					// unknown word
+				}
+
+			default:
+				// unused keyword (we don't care about the username)
+				lastKeyword = ""
+			}
+
+		default:
+			wordBuilder.WriteByte(b)
+		}
+	}
+
+	return ""
 }
 
 func normalizeVersion(version string) string {
