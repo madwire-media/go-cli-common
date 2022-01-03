@@ -1,3 +1,4 @@
+//go:build android || linux || darwin
 // +build android linux darwin
 
 package clicommon
@@ -18,7 +19,7 @@ func callSudo(action string, params []string) error {
 	}
 
 	if !isatty.IsTerminal(os.Stdout.Fd()) {
-		return errors.New("Not a terminal")
+		return errors.New("not a terminal")
 	}
 
 	args := append([]string{thisExe, sudoArg, action}, params...)

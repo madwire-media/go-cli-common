@@ -1,3 +1,4 @@
+//go:build !android && !linux && !darwin && !windows
 // +build !android,!linux,!darwin,!windows
 
 package clicommon
