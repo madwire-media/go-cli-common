@@ -420,7 +420,7 @@ func (update *updatedRelease) apply(restart bool) error {
 	file.Close()
 
 	if needsSudo {
-		err = CallSudo("replaceExecutable", file.Name())
+		err = CallSudo(ReplaceExecutableSudoAction{NewExe: file.Name()})
 		if err != nil {
 			return err
 		}
