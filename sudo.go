@@ -14,7 +14,7 @@ type SudoAction interface {
 	Handle(params []string) error
 }
 
-var registeredActions map[string]SudoAction
+var registeredActions = map[string]SudoAction{}
 
 func RegisterAction(action SudoAction) {
 	registeredActions[action.Name()] = action
