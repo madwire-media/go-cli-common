@@ -4,18 +4,28 @@ import (
 	"errors"
 	"fmt"
 	"os"
-
-	"github.com/kardianos/osext"
 )
 
 const sudoArg = "__sudo"
+
+type SudoAction interface {
+	Name() string
+	Params() []string
+	Handle(params []string) error
+}
+
+var registeredActions = map[string]SudoAction{}
+
+func RegisterAction(action SudoAction) {
+	registeredActions[action.Name()] = action
+}
 
 // CallSudo asks the user for superuser permissions, and then executes the
 // currently-running program with those permissions for a particular action.
 // TryHandleSudo should be called at the beginning of the program's main()
 // function to catch these sudo calls.
-func CallSudo(action string, params ...string) error {
-	return callSudo(action, params)
+func CallSudo(action SudoAction) error {
+	return callSudo(action.Name(), action.Params())
 }
 
 // TryHandleSudo catches superuser self-executions to do certain actions that
@@ -37,27 +47,9 @@ func TryHandleSudo() {
 }
 
 func handleSudo(action string, params []string) error {
-	switch action {
-	case "replaceExecutable":
-		if len(params) < 1 {
-			return errors.New("Not enough parameters for replaceExecutable action")
-		}
-
-		newExe := params[0]
-
-		thisExe, err := osext.Executable()
-		if err != nil {
-			return err
-		}
-
-		err = os.Rename(newExe, thisExe)
-		if err != nil {
-			return err
-		}
-
-	default:
-		return errors.New("Unknown sudo action")
+	if handler, ok := registeredActions[action]; ok {
+		return handler.Handle(params)
 	}
 
-	return nil
+	return errors.New("unknown sudo action")
 }

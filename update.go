@@ -57,14 +57,14 @@ func NewAutoUpdater(
 	configDir *UserConfigDir,
 	buildVersion, githubRepo string,
 	isPrivate bool,
-) (error, *AutoUpdater) {
+) (*AutoUpdater, error) {
 	shouldSave := false
 
 	config := autoUpdaterConfig{}
 
 	err := configDir.LoadConfig(updateConfigName, &config)
 	if err != nil {
-		return err, nil
+		return nil, err
 	}
 
 	if config.AutoUpdate == nil {
@@ -113,11 +113,11 @@ func NewAutoUpdater(
 	if shouldSave {
 		err = updater.save()
 		if err != nil {
-			return err, nil
+			return nil, err
 		}
 	}
 
-	return nil, updater
+	return updater, nil
 }
 
 // TryAutoUpdateSelf checks for an update and replaces the existing executable
@@ -129,7 +129,7 @@ func (updater *AutoUpdater) TryAutoUpdateSelf() error {
 		return err
 	}
 
-	if *updater.config.AutoUpdate == false {
+	if !*updater.config.AutoUpdate {
 		return nil
 	}
 
@@ -280,6 +280,9 @@ func (updater *AutoUpdater) checkForUpdate(force bool) (*updatedRelease, error) 
 
 	for {
 		req, err := http.NewRequest("GET", fmt.Sprintf(githubLatestReleaseTemplate, updater.githubRepo), nil)
+		if err != nil {
+			return nil, err
+		}
 
 		if updater.isPrivate {
 			if token == "" {
@@ -357,6 +360,9 @@ func (update *updatedRelease) apply(restart bool) error {
 	}
 
 	req, err := http.NewRequest("GET", update.downloadURL, nil)
+	if err != nil {
+		return err
+	}
 
 	if update.githubToken != "" {
 		req.Header.Set("Authorization", "Bearer "+update.githubToken)
@@ -371,7 +377,7 @@ func (update *updatedRelease) apply(restart bool) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		return errors.New("Did not get 200 status code from update download")
+		return errors.New("did not get 200 status code from update download")
 	}
 
 	gzipReader, _ := gzip.NewReader(resp.Body)
@@ -420,7 +426,7 @@ func (update *updatedRelease) apply(restart bool) error {
 	file.Close()
 
 	if needsSudo {
-		err = CallSudo("replaceExecutable", file.Name())
+		err = CallSudo(ReplaceExecutableSudoAction{NewExe: file.Name()})
 		if err != nil {
 			return err
 		}
