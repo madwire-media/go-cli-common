@@ -394,7 +394,7 @@ func (update *updatedRelease) apply(restart bool) error {
 			return err
 		}
 
-		if header.Name == "secrets" {
+		if header.Name == filepath.Base(thisExe) {
 			break
 		}
 	}
