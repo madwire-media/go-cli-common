@@ -227,12 +227,15 @@ func (updater *AutoUpdater) getOrAskForToken(forceNew bool) (string, error) {
 		fmt.Println("No GitHub personal access token configured, please enter a token to enable automatic updates")
 	}
 
-	newToken := CliQuestion("GitHub access token (for updates)")
+	newToken, err := CliQuestionHidden("GitHub access token (for updates)")
+	if err != nil {
+		return "", err
+	}
 
 	updater.config.GithubToken = newToken
 	updater.githubToken = newToken
 
-	err := updater.save()
+	err = updater.save()
 	if err != nil {
 		return "", err
 	}
@@ -391,7 +394,7 @@ func (update *updatedRelease) apply(restart bool) error {
 			return err
 		}
 
-		if header.Name == "secrets" {
+		if header.Name == filepath.Base(thisExe) {
 			break
 		}
 	}
