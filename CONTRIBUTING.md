@@ -14,7 +14,7 @@ Pull requests will be considered at the discretion of the maintainers.
 
 When submitting a pull request
 
-* Submit against the `master` branch
+* Submit against the `main` branch
 * Update any related documentation
 * Ensure that code conforms to the project style requirements
 * Do not update the CHANGELOG.md or version
