@@ -57,6 +57,7 @@ func NewAutoUpdater(
 	configDir *UserConfigDir,
 	buildVersion, githubRepo string,
 	isPrivate bool,
+	configSubcommand *string,
 ) (*AutoUpdater, error) {
 	shouldSave := false
 
@@ -81,7 +82,9 @@ func NewAutoUpdater(
 			otherState = "enable"
 		}
 
-		fmt.Println("You can " + otherState + " this later by running '" + os.Args[0] + " config autoupdate'")
+		if configSubcommand != nil {
+			fmt.Printf("You can %s this later by running '%s %s'\n", otherState, os.Args[0], *configSubcommand)
+		}
 
 		shouldSave = true
 	}
@@ -124,11 +127,6 @@ func NewAutoUpdater(
 // with the new version if there is one. Update checks are debounced to every 24
 // hours, and can be disabled with a config option.
 func (updater *AutoUpdater) TryAutoUpdateSelf() error {
-	err := updater.Init()
-	if err != nil {
-		return err
-	}
-
 	if !*updater.config.AutoUpdate {
 		return nil
 	}
@@ -152,11 +150,6 @@ func (updater *AutoUpdater) TryAutoUpdateSelf() error {
 // with the new version if there is one. This will always run, without any
 // debouncing or config options to disable it.
 func (updater *AutoUpdater) TryManualUpdate() error {
-	err := updater.Init()
-	if err != nil {
-		return err
-	}
-
 	update, err := updater.checkForUpdate(true)
 	if err != nil {
 		return err
@@ -207,11 +200,6 @@ func SetAutoUpdate(configDir *UserConfigDir, shouldAutoUpdate bool) (bool, error
 	}
 
 	return changed, nil
-}
-
-func (updater *AutoUpdater) Init() error {
-
-	return nil
 }
 
 func (updater *AutoUpdater) save() error {
