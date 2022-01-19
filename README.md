@@ -146,8 +146,8 @@ import (
 )
 
 // This can be overridden by a linker, e.g. in a goreleaser build
-var BuildVersion "0.0.1"
-const GithubRepo "my-org/my-app-name"
+var BuildVersion = "0.0.1"
+const GithubRepo = "my-org/my-app-name"
 
 func main() {
     maybeAutoUpdate()
