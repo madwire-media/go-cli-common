@@ -488,13 +488,7 @@ func tryFindGithubTokenFromNetrc() string {
 
 			case "password":
 				if isGithub {
-					// Personal access tokens are exactly 40 characters
-					match, err := regexp.Match(`^[a-fA-F0-9]{40}$`, []byte(word))
-					if err == nil && match {
-						return word
-					}
-
-					return ""
+					return word
 				}
 
 			case "":
